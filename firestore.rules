@@ -14,6 +14,17 @@ service cloud.firestore {
       allow read, write: if isStaff();
     }
 
+    // 変更履歴：追加と閲覧だけできます。書き換え・削除は誰にもできません。
+    // 「誰が」の欄は、ログインしている本人のメールアドレスでないと保存できません。
+    match /logs/{logId} {
+      allow read: if isStaff();
+      allow create: if isStaff()
+        && request.resource.data.by == request.auth.token.email
+        && request.resource.data.at is number
+        && request.resource.data.action is string
+        && request.resource.data.action.size() <= 300;
+    }
+
     // それ以外のデータは誰も読み書きできません。
     match /{document=**} {
       allow read, write: if false;

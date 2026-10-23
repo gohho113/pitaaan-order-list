@@ -106,6 +106,12 @@ h2.sec .count{color:var(--ink-2);font-weight:500;font-size:.9rem}
 .item .nm:hover{text-decoration:underline}
 .var{display:inline-block;margin-left:6px;font-size:.8rem;font-weight:700;padding:0 .55em;border-radius:4px;border:1.5px solid var(--cat-line,var(--line));background:var(--surface-2);vertical-align:1px}
 .item .sub{font-size:.8rem;color:var(--ink-2)}
+.log{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:4px 14px 10px}
+.log-day{font-size:.85rem;color:var(--ink-2);margin:14px 0 4px}
+.log-row{display:grid;grid-template-columns:3.2em 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.log-day + .log-row{border-top:0}
+.log-time{color:var(--ink-2);font-variant-numeric:tabular-nums}
+.log-row .sub{font-size:.85rem;color:var(--ink-2)}
 .tag{display:inline-block;font-size:.75rem;font-weight:700;padding:0 .5em;border-radius:4px;margin-left:6px;vertical-align:2px}
 .tag.need{background:var(--signal);color:var(--signal-ink)}
 .tag.wait{background:var(--surface-2);color:var(--ink-2);border:1px solid var(--line)}
@@ -333,6 +339,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     <nav class="tabs" role="tablist">
       <button class="tab" role="tab" data-view="order" aria-selected="true">発注リスト <span class="badge" id="badge" hidden></span></button>
       <button class="tab" role="tab" data-view="stock" aria-selected="false">在庫</button>
+      <button class="tab" role="tab" data-view="log" aria-selected="false">履歴</button>
       <button class="tab" role="tab" data-view="help" aria-selected="false">使い方</button>
     </nav>
   </div>
@@ -345,6 +352,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
   <section id="v-stock" hidden></section>
   <section id="v-item" hidden></section>
   <section id="v-qr" hidden></section>
+  <section id="v-log" hidden></section>
   <section id="v-help" hidden></section>
 </main>
 <button class="fab" id="fab" type="button">＋ 備品を登録</button>
@@ -417,6 +425,8 @@ dialog{border:3px solid var(--pink);border-radius:18px}
   let catFilter = "all";
   let query = "";
   let editingId = null;
+  let logCol = null, logUnsub = null, logs = [], logsLoaded = false;
+  const stockFrom = new Map(); // id -> stock value before a run of +/- taps
 
   const $ = s => document.querySelector(s);
   const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -500,6 +510,16 @@ dialog{border:3px solid var(--pink);border-radius:18px}
   }
 
   // ---------- writes ----------
+  function who() {
+    const email = String(user?.email || "");
+    return { by: email, name: String(user?.displayName || email.split("@")[0]) };
+  }
+  // 変更履歴（logs）に1件追加する。失敗しても本体の操作は止めない
+  function logAct(it, action) {
+    if (!logCol) return;
+    logCol.add({ ...who(), at: Date.now(), itemId: it ? String(it.id) : "", item: it ? fullName(it) : "", action })
+      .catch(e => console.warn("log failed", e));
+  }
   function queueWrite(id, fn) {
     const prev = chains.get(id) || Promise.resolve();
     const next = prev.then(fn).catch(onWriteError);
@@ -510,23 +530,39 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     const it = items.get(id); if (!it || !col || !canWrite) return;
     const cur = stockOf(it);
     const v = Math.max(0, (cur ?? 0) + delta);
+    if (!stockFrom.has(id)) stockFrom.set(id, cur);
     pending.set(id, v);
     render();
     clearTimeout(timers.get(id));
     timers.set(id, setTimeout(() => {
-      const val = pending.get(id);
+      const val = pending.get(id), from = stockFrom.get(id);
+      stockFrom.delete(id);
       queueWrite(id, async () => {
-        await col.doc(id).update({ stock: val, updatedAt: Date.now() });
+        await col.doc(id).update({ stock: val, updatedAt: Date.now(), updatedBy: who().name });
         if (pending.get(id) === val) pending.delete(id);
+        if (from !== val) logAct(it, `在庫 ${from ?? "?"} → ${val}`);
       });
     }, 700));
   }
-  async function patch(id, data, msg) {
+  async function patch(id, data, msg, action) {
     if (!col || !canWrite) return;
+    const it = items.get(id);
     await queueWrite(id, async () => {
-      await col.doc(id).update({ ...data, updatedAt: Date.now() });
+      await col.doc(id).update({ ...data, updatedAt: Date.now(), updatedBy: who().name });
       if (msg) toast(msg);
+      if (action) logAct(it, action);
     });
+  }
+  function editSummary(prev, data, before) {
+    const parts = [];
+    if (prev && fullName(prev) !== fullName(data)) parts.push(`品名 ${fullName(prev)} → ${fullName(data)}`);
+    if (before !== data.stock) parts.push(`在庫 ${before ?? "未入力"} → ${data.stock ?? "未入力"}`);
+    if ((prev?.min ?? 0) !== data.min) parts.push(`最低在庫 ${prev?.min ?? 0} → ${data.min}`);
+    if (prev?.qty !== data.qty) parts.push(`発注数 ${prev?.qty ?? "?"} → ${data.qty}`);
+    return parts.length ? `編集：${parts.join("、")}` : "内容を編集";
+  }
+  function cancelPendingStock(id) {
+    clearTimeout(timers.get(id)); pending.delete(id); stockFrom.delete(id);
   }
 
   // ---------- render ----------
@@ -542,17 +578,18 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     $("#seed").innerHTML = signedIn && loaded && items.size === 0 && SEED.length && canWrite
       ? `<div class="notice">まだ備品が登録されていません。claude.ai版のリストに入っていた備品（${SEED.length}件）を取り込めます。<div style="margin-top:10px"><button class="btn primary sm" data-act="import">備品データを取り込む</button></div></div>` : "";
     if (!signedIn) {
-      ["order", "stock", "item", "qr", "help"].forEach(v => { $("#v-" + v).hidden = true; });
+      ["order", "stock", "item", "qr", "log", "help"].forEach(v => { $("#v-" + v).hidden = true; });
       $("#v-login").hidden = false; $("#fab").hidden = true;
       renderLogin(); return;
     }
     $("#v-login").hidden = true;
-    ["order", "stock", "item", "qr", "help"].forEach(v => { $("#v-" + v).hidden = view !== v; });
-    $("#fab").hidden = !canWrite || !col || view === "item" || view === "qr" || view === "help";
+    ["order", "stock", "item", "qr", "log", "help"].forEach(v => { $("#v-" + v).hidden = view !== v; });
+    $("#fab").hidden = !canWrite || !col || view === "item" || view === "qr" || view === "log" || view === "help";
 
     if (view === "order") renderOrder(need, waiting);
     else if (view === "stock") renderStock(all);
     else if (view === "item") renderItem();
+    else if (view === "log") renderLog();
     else if (view === "help") renderHelp();
     else renderQR(all);
   }
@@ -656,6 +693,37 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     el.querySelector(".list").innerHTML = body;
   }
 
+  // ---------- history ----------
+  const LOG_LIMIT = 200;
+  function watchLogs() {
+    if (logUnsub || !logCol) return;
+    logUnsub = logCol.orderBy("at", "desc").limit(LOG_LIMIT).onSnapshot(snap => {
+      logs = snap.docs.map(d => d.data());
+      logsLoaded = true;
+      if (view === "log") render();
+    }, err => {
+      logsLoaded = true; logs = [];
+      logUnsub = null;
+      if (view === "log") $("#v-log").innerHTML = `<div class="empty">履歴を読み込めませんでした。${err.code === "permission-denied" ? "データベースのルールに履歴（logs）の設定が入っているか確認してください。" : "ページを開き直してください。"}</div>`;
+    });
+  }
+  function renderLog() {
+    const el = $("#v-log");
+    watchLogs();
+    if (!logsLoaded) { el.innerHTML = `<div class="empty">読み込み中…</div>`; return; }
+    if (!logs.length) { el.innerHTML = `<h2 class="sec">変更履歴</h2><div class="empty">まだ記録はありません。在庫を増減したり、発注したりすると、誰がいつ何をしたかがここに残ります。</div>`; return; }
+    let lastDay = null;
+    const rows = logs.map(l => {
+      const d = new Date(l.at);
+      const day = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}`;
+      const head = day !== lastDay ? `<h3 class="log-day">${day}</h3>` : "";
+      lastDay = day;
+      const time = `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      return `${head}<div class="log-row"><span class="log-time">${time}</span><div><div><strong>${esc(l.name || l.by)}</strong>${l.item ? ` ・ ${esc(l.item)}` : ""}</div><div class="sub">${esc(l.action)}</div></div></div>`;
+    }).join("");
+    el.innerHTML = `<h2 class="sec">変更履歴 <span class="count">新しい順・最大${LOG_LIMIT}件</span></h2><div class="log">${rows}</div>`;
+  }
+
   // ---------- single item (QR) ----------
   let itemId = null;
   function renderItem() {
@@ -692,6 +760,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         ${ctrl}
         ${linksHtml(it)}
         <div class="sub" style="color:var(--ink-2);font-size:.85rem">${lastOrderedText(it)}</div>
+        ${it.updatedBy ? `<div class="sub" style="color:var(--ink-2);font-size:.85rem">最終更新：${esc(it.updatedBy)}</div>` : ""}
       </div>
       <p style="text-align:center;margin-top:20px"><button class="btn ghost" data-go="stock">在庫一覧を見る</button> <button class="btn ghost" data-go="order">発注リストを見る</button></p>`;
   }
@@ -891,6 +960,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       });
       await batch.commit();
       toast(`${SEED.length}件の備品を取り込みました`);
+      logAct(null, `備品データを取り込み（${SEED.length}件）`);
     } catch (e) { onWriteError(e); }
   }
 
@@ -958,7 +1028,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     if (bad.length) { $("#f-err").textContent = "商品リンクは https:// から始まるURLを1行に1つずつ入力してください"; return; }
     const links = [...new Set(lines)].slice(0, 10);
     const data = { name, variant: $("#f-var").value.trim(), mode, cat: $("#f-cat").value, unit: $("#f-unit").value.trim(), stock: Number.isNaN(stock) ? null : stock, min: Number.isNaN(min) ? (prevMin ?? 0) : min, qty,
-      shop: isUrl(shopRaw) ? "" : shopRaw, links, note: $("#f-note").value.trim(), updatedAt: Date.now() };
+      shop: isUrl(shopRaw) ? "" : shopRaw, links, note: $("#f-note").value.trim(), updatedAt: Date.now(), updatedBy: who().name };
     const lastVal = $("#f-last").value;
     const prevIt = editingId ? items.get(editingId) : null;
     if (!lastVal) data.lastOrderedAt = null;
@@ -968,12 +1038,17 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     try {
       if (editingId) {
         const id = editingId;
-        clearTimeout(timers.get(id)); pending.delete(id);
-        await queueWrite(id, () => col.doc(id).update(data));
+        const before = prevIt ? stockOf(prevIt) : null;
+        cancelPendingStock(id);
+        await queueWrite(id, async () => {
+          await col.doc(id).update(data);
+          logAct({ id, ...data }, editSummary(prevIt, data, before));
+        });
         toast("保存しました");
       } else {
         const id = "i" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
         await col.doc(id).set({ ...data, ordered: false });
+        logAct({ id, ...data }, `登録（在庫 ${data.stock ?? "未入力"}）`);
         toast("登録しました");
       }
       $("#dlg").close();
@@ -993,7 +1068,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     const it = items.get(editingId);
     if (!confirmDelete(it)) return;
     const id = editingId;
-    try { await queueWrite(id, () => col.doc(id).delete()); toast("削除しました"); $("#dlg").close(); }
+    try { await queueWrite(id, async () => { await col.doc(id).delete(); logAct(it, "削除"); }); toast("削除しました"); $("#dlg").close(); }
     catch (e) { onWriteError(e); }
   };
   let delArmed = null;
@@ -1028,8 +1103,8 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         return;
       }
       rowArmed = null;
-      clearTimeout(timers.get(id)); pending.delete(id);
-      queueWrite(id, () => col.doc(id).delete()).then(() => toast(`「${fullName(it)}」を削除しました`));
+      cancelPendingStock(id);
+      queueWrite(id, async () => { await col.doc(id).delete(); logAct(it, "削除"); }).then(() => toast(`「${fullName(it)}」を削除しました`));
       return;
     }
     if (act.dataset.act === "login") { doLogin(); return; }
@@ -1040,21 +1115,21 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     if (act.dataset.act === "print") { try { window.print(); } catch { toast("印刷画面を開けませんでした。「ファイルで保存」を使ってください"); } return; }
     if (act.dataset.act === "saveqr") { saveQR(); return; }
     if (act.dataset.act === "low" && it) {
-      patch(id, { low: !it.low }, it.low ? "報告を取り消しました" : `「${fullName(it)}」を発注リストに入れました`);
+      patch(id, { low: !it.low }, it.low ? "報告を取り消しました" : `「${fullName(it)}」を発注リストに入れました`, it.low ? "「少なくなった」を取り消し" : "少なくなったと報告");
       return;
     }
     if (act.dataset.act === "almost" && it) {
-      clearTimeout(timers.get(id)); pending.delete(id);
-      patch(id, { stock: it.min ?? 0 }, `「${fullName(it)}」を発注リストに入れました`);
+      cancelPendingStock(id);
+      patch(id, { stock: it.min ?? 0 }, `「${fullName(it)}」を発注リストに入れました`, `在庫 ${stockOf(it) ?? "?"} → ${it.min ?? 0}（発注リストへ）`);
       return;
     }
-    if (act.dataset.act === "ordered" && it) patch(id, { ordered: true, orderedAt: Date.now(), lastOrderedAt: Date.now(), prevOrderedAt: it.lastOrderedAt ?? null }, `「${fullName(it)}」を発注済みにしました`);
-    if (act.dataset.act === "unorder" && it) patch(id, { ordered: false, lastOrderedAt: it.prevOrderedAt ?? null }, "発注を取り消しました");
+    if (act.dataset.act === "ordered" && it) patch(id, { ordered: true, orderedAt: Date.now(), lastOrderedAt: Date.now(), prevOrderedAt: it.lastOrderedAt ?? null }, `「${fullName(it)}」を発注済みにしました`, `発注した（${it.qty}${it.unit || ""}）`);
+    if (act.dataset.act === "unorder" && it) patch(id, { ordered: false, lastOrderedAt: it.prevOrderedAt ?? null }, "発注を取り消しました", "発注を取り消し");
     if (act.dataset.act === "arrived" && it) {
       clearTimeout(timers.get(id));
       const base = stockOf(it) ?? 0; pending.delete(id);
-      if (isFlag(it)) { patch(id, { ordered: false, low: false }, `「${fullName(it)}」の到着を記録しました`); return; }
-      patch(id, { ordered: false, stock: base + (it.qty || 0) }, `「${fullName(it)}」の在庫に${it.qty}${it.unit || ""}追加しました`);
+      if (isFlag(it)) { patch(id, { ordered: false, low: false }, `「${fullName(it)}」の到着を記録しました`, "届いた"); return; }
+      patch(id, { ordered: false, stock: base + (it.qty || 0) }, `「${fullName(it)}」の在庫に${it.qty}${it.unit || ""}追加しました`, `届いた（在庫 ${base} → ${base + (it.qty || 0)}）`);
     }
   });
   document.addEventListener("input", e => {
@@ -1071,7 +1146,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
 
   function readHash() {
     const h = (location.hash || "").slice(1);
-    if (h === "stock" || h === "order" || h === "qr" || h === "help") view = h;
+    if (h === "stock" || h === "order" || h === "qr" || h === "log" || h === "help") view = h;
     else if (h.startsWith("q-")) { view = "item"; itemId = h.slice(2); }
   }
   readHash();
@@ -1090,6 +1165,8 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     const fs = firebase.firestore();
     auth.onAuthStateChanged(async u => {
       if (unsub) { unsub(); unsub = null; }
+      if (logUnsub) { logUnsub(); logUnsub = null; }
+      logCol = null; logs = []; logsLoaded = false;
       user = u;
       if (!u) { signedIn = false; col = null; items = new Map(); loaded = false; render(); return; }
       if (DOMAIN && !String(u.email || "").toLowerCase().endsWith("@" + DOMAIN)) {
@@ -1098,6 +1175,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       }
       signedIn = true; canWrite = true; loginError = ""; notice("");
       col = fs.collection("items");
+      logCol = fs.collection("logs");
       unsub = col.onSnapshot(snap => {
         items = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
         loaded = true;
