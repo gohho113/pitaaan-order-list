@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 会社のGoogleアカウントだけを許可します。
+    // 下の "YOUR-DOMAIN" を、会社のメールアドレスの「@」より後ろ（例：itnav.co.jp）に書き換えてください。
+    function isStaff() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.split('@')[1] == 'itnav.co.jp';
+    }
+
+    match /items/{itemId} {
+      allow read, write: if isStaff();
+    }
+
+    // それ以外のデータは誰も読み書きできません。
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
