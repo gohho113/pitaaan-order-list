@@ -243,7 +243,8 @@ dialog{border:3px solid var(--pink);border-radius:18px}
 .help{border:2.5px solid var(--pink);border-radius:20px;overflow:hidden}
 .hhero{margin:-8px -20px 0;background:#fff}
 .hhero img{display:block;width:100%;max-width:640px;height:auto;margin:0 auto}
-.help h2{color:var(--pink);font-size:1.45rem;text-align:center}
+.help h2{color:var(--pink);font-size:1.9rem;text-align:center}
+@media (max-width:420px){.help h2{font-size:1.5rem}}
 .help h3{border-left-color:var(--pink);font-family:"Mochiy Pop One",sans-serif;font-weight:400}
 .hill{background:var(--surface-2);border:2px solid var(--line)}
 .hstep{border-top-color:var(--line)}
@@ -339,8 +340,8 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     <nav class="tabs" role="tablist">
       <button class="tab" role="tab" data-view="order" aria-selected="true">発注リスト <span class="badge" id="badge" hidden></span></button>
       <button class="tab" role="tab" data-view="stock" aria-selected="false">在庫</button>
-      <button class="tab" role="tab" data-view="log" aria-selected="false">履歴</button>
       <button class="tab" role="tab" data-view="help" aria-selected="false">使い方</button>
+      <button class="tab" role="tab" data-view="log" aria-selected="false">履歴</button>
     </nav>
   </div>
 </header>
