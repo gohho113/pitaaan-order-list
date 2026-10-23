@@ -594,7 +594,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     }
     $("#v-login").hidden = true;
     ["order", "stock", "item", "qr", "log", "help"].forEach(v => { $("#v-" + v).hidden = view !== v; });
-    $("#fab").hidden = !canWrite || !col || view === "item" || view === "qr" || view === "log" || view === "help";
+    $("#fab").hidden = !canWrite || !col || view === "item" || view === "qr" || view === "log";
 
     if (view === "order") renderOrder(need, waiting);
     else if (view === "stock") renderStock(all);
