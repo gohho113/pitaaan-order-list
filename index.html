@@ -161,6 +161,8 @@ dialog::backdrop{background:rgba(10,20,30,.55)}
 .order-row .links{grid-column:1 / -1}
 .order-row .eta{grid-column:1 / -1;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:.88rem;color:var(--ink-2);background:var(--surface-2);border-radius:8px;padding:6px 10px}
 .order-row .eta input{padding:4px 8px;border:2px solid var(--line);border-radius:8px;background:var(--surface);min-height:0}
+.order-row .eta .amt-input{width:7.5em}
+.order-row .eta + .eta{margin-top:-2px}
 .order-row .eta .eta-txt{font-weight:700;color:var(--ink)}
 .order-row .eta.late .eta-txt{color:var(--pink-text)}
 .month{background:var(--surface);border:2px solid var(--line);border-radius:14px;padding:12px 16px;margin-bottom:8px}
@@ -594,6 +596,8 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     if (!y || !m || !d) return "";
     return `${m}/${d}（${WD[new Date(y, m - 1, d).getDay()]}）`;
   }
+  // 発注1回をまとめる目印：発注した時刻と、その月（集計はこの月に入る）
+  const orderKey = t => ({ orderAt: t || null, month: t ? ymOf(new Date(t)) : null });
   const todayIso = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
   function editSummary(prev, data, before) {
     const parts = [];
@@ -674,7 +678,10 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     const late = it.eta && it.eta < todayIso();
     const eta = mode === "wait" ? `<label class="eta ${late ? "late" : ""}"><span>📦 お届け予定日</span>
         <input type="date" class="eta-input" data-id="${esc(it.id)}" value="${esc(it.eta || "")}" ${canWrite ? "" : "disabled"} aria-label="${esc(fullName(it))}のお届け予定日">
-        <span class="eta-txt">${it.eta ? `${etaText(it.eta)}${late ? " 予定日を過ぎています" : " 着予定"}` : "連絡が来たら入力"}</span></label>` : "";
+        <span class="eta-txt">${it.eta ? `${etaText(it.eta)}${late ? " 予定日を過ぎています" : " 着予定"}` : "連絡が来たら入力"}</span></label>
+      <label class="eta"><span>💴 発注金額（円）</span>
+        <input type="number" class="amt-input" data-id="${esc(it.id)}" min="0" step="1" inputmode="numeric" value="${typeof it.orderedAmount === "number" ? it.orderedAmount : ""}" placeholder="未入力" ${canWrite ? "" : "disabled"} aria-label="${esc(fullName(it))}の発注金額">
+        <span class="eta-txt">${typeof it.orderedAmount === "number" ? yen(it.orderedAmount) : "連絡が来たら入力"}</span></label>` : "";
     const btns = mode === "need"
       ? `<button class="btn sm" data-act="ordered" data-id="${esc(it.id)}" ${canWrite ? "" : "disabled"}>発注した</button>`
       : `<button class="btn sm" data-act="arrived" data-id="${esc(it.id)}" ${canWrite ? "" : "disabled"}>${isFlag(it) ? "届いた" : `届いた（在庫＋${esc(it.qty)}）`}</button>
@@ -800,35 +807,55 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     const [y, m] = sumYm.split("-").map(Number);
     sumYm = ymOf(new Date(y, m - 1 + delta, 1));
   }
+  const MONEY_KINDS = ["ordered", "unordered", "adjust"];
   function loadMonth(ym) {
     if (monthCache[ym] || monthLoading[ym] || !logCol) return;
     monthLoading[ym] = true;
     const [a, b] = monthRange(ym);
-    logCol.where("at", ">=", a).where("at", "<", b).get()
-      .then(snap => { monthCache[ym] = snap.docs.map(d => d.data()).filter(l => l.kind === "ordered" || l.kind === "unordered").sort((x, y) => y.at - x.at); })
+    // 発注した月（month）で集める。month を持たない古い記録は、記録した日時で集める
+    Promise.all([logCol.where("month", "==", ym).get(), logCol.where("at", ">=", a).where("at", "<", b).get()])
+      .then(([byMonth, byTime]) => {
+        const seen = new Map();
+        byMonth.docs.forEach(d => seen.set(d.id, d.data()));
+        byTime.docs.forEach(d => { const l = d.data(); if (!l.month) seen.set(d.id, l); });
+        monthCache[ym] = [...seen.values()].filter(l => MONEY_KINDS.includes(l.kind));
+      })
       .catch(e => { console.warn("month load failed", e); monthCache[ym] = "error"; })
       .finally(() => { delete monthLoading[ym]; if (view === "log") render(); });
+  }
+  // 「発注した」1回ごとに、見込み・金額修正・取り消しをまとめて最終の金額にする
+  function monthOrders(logsOfMonth) {
+    const orders = new Map();
+    logsOfMonth.forEach(l => {
+      const key = `${l.itemId}|${l.orderAt ?? l.at}`;
+      const o = orders.get(key) || { item: l.item, qty: l.qty, at: l.orderAt ?? l.at, name: "", amount: 0, known: false, canceled: false, adjusted: false };
+      if (typeof l.amount === "number") { o.amount += l.amount; o.known = true; }
+      if (l.kind === "ordered") { o.name = l.name || l.by; o.qty = l.qty; o.item = l.item; }
+      if (l.kind === "adjust") o.adjusted = true;
+      if (l.kind === "unordered") o.canceled = true;
+      orders.set(key, o);
+    });
+    return [...orders.values()].sort((x, y) => y.at - x.at);
   }
   function monthHtml() {
     loadMonth(sumYm);
     const [y, m] = sumYm.split("-").map(Number), isNow = sumYm === ymOf(new Date());
     const nav = `<div class="month-nav"><button class="btn ghost sm" data-month="-1" aria-label="前の月">◀</button><strong>${y}年${m}月の発注金額</strong><button class="btn ghost sm" data-month="1" aria-label="次の月" ${isNow ? "disabled" : ""}>▶</button></div>`;
-    const rows = monthCache[sumYm];
-    if (!rows) return `<div class="month">${nav}<div class="sub" style="margin-top:8px">読み込み中…</div></div>`;
-    if (rows === "error") return `<div class="month">${nav}<div class="sub" style="margin-top:8px">集計を読み込めませんでした。ページを開き直してください。</div></div>`;
-    const total = rows.reduce((s, l) => s + (typeof l.amount === "number" ? l.amount : 0), 0);
-    const ordered = rows.filter(l => l.kind === "ordered"), canceled = rows.filter(l => l.kind === "unordered");
-    const noPrice = ordered.filter(l => typeof l.amount !== "number").length;
-    const list = rows.map(l => {
-      const d = new Date(l.at), amt = typeof l.amount === "number" ? l.amount : null;
-      const cls = amt === null ? "none" : amt < 0 ? "minus" : "";
-      const txt = amt === null ? (l.kind === "unordered" ? "—" : "単価未入力") : amt < 0 ? `−${yen(-amt)}` : yen(amt);
-      return `<div class="month-row"><span class="sub">${d.getMonth() + 1}/${d.getDate()}</span><div>${esc(l.item)}${l.kind === "unordered" ? "（取り消し）" : ` ×${esc(l.qty)}`}<div class="sub">${esc(l.name || l.by)}</div></div><span class="amt ${cls}">${txt}</span></div>`;
+    const raw = monthCache[sumYm];
+    if (!raw) return `<div class="month">${nav}<div class="sub" style="margin-top:8px">読み込み中…</div></div>`;
+    if (raw === "error") return `<div class="month">${nav}<div class="sub" style="margin-top:8px">集計を読み込めませんでした。ページを開き直してください。</div></div>`;
+    const orders = monthOrders(raw), live = orders.filter(o => !o.canceled);
+    const total = live.reduce((s, o) => s + (o.known ? o.amount : 0), 0);
+    const unknown = live.filter(o => !o.known).length, canceled = orders.length - live.length;
+    const list = orders.map(o => {
+      const d = new Date(o.at);
+      const amt = o.canceled ? `<span class="amt none">取り消し</span>` : o.known ? `<span class="amt">${yen(o.amount)}</span>` : `<span class="amt none">金額未入力</span>`;
+      return `<div class="month-row"><span class="sub">${d.getMonth() + 1}/${d.getDate()}</span><div>${esc(o.item)} ×${esc(o.qty)}<div class="sub">${esc(o.name)}${o.adjusted && !o.canceled ? "・実際の金額に修正済み" : ""}</div></div>${amt}</div>`;
     }).join("");
     return `<div class="month">${nav}
       <div class="month-total">${yen(total)}</div>
-      <div class="sub">発注 ${ordered.length}件${canceled.length ? `・取り消し ${canceled.length}件` : ""}${noPrice ? `（単価が未入力の${noPrice}件は金額に入っていません）` : ""}</div>
-      ${rows.length ? `<div class="month-rows">${list}</div>` : `<div class="sub" style="margin-top:8px">この月の発注はありません。</div>`}</div>`;
+      <div class="sub">発注 ${live.length}件${canceled ? `・取り消し ${canceled}件` : ""}${unknown ? `（金額が未入力の${unknown}件は合計に入っていません）` : ""}</div>
+      ${orders.length ? `<div class="month-rows">${list}</div>` : `<div class="sub" style="margin-top:8px">この月の発注はありません。</div>`}</div>`;
   }
 
   function renderLog() {
@@ -1046,7 +1073,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         <ol><li>「発注リスト」タブを開きます。発注が必要な備品と、それぞれの発注数が並んでいます。</li>
         <li>「発注メモをコピー」を押すと、届け先・時間指定・商品名・個数・リンクをまとめた文章がコピーされます。そのままSlackの<b>#備品購入関連</b>に貼り付けて発注します。</li>
         <li>Slackに貼ったら、その場で備品ごとに「発注した」を押します。「発注済み・到着待ち」に移り、最終発注日も記録されます。同じ備品を二重に発注しないよう、必ず押してください。</li>
-        <li>発注が完了すると、お届け日の連絡が来ます。「発注済み・到着待ち」の備品の「お届け予定日」に、その日付を入れておきます。到着待ちは予定日が近い順に並び、予定日を過ぎるとピンクの文字で知らせます。</li></ol>
+        <li>発注が完了すると、お届け日の連絡が来ます。「発注済み・到着待ち」の備品の「お届け予定日」に、その日付を入れておきます。連絡に金額が書いてあれば、「発注金額」も実際の金額に直してください（最初は「単価 × 発注数」の見込みが入っています）。到着待ちは予定日が近い順に並び、予定日を過ぎるとピンクの文字で知らせます。</li></ol>
         <p>「発注できなかった」と連絡が来たときや、発注をやめたときは、「発注を取り消す」で発注リストに戻せます。</p>`)}
 
       ${step(ILL.arrive, "🚚 届いたら「届いた」を押そう", `
@@ -1311,15 +1338,15 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       return;
     }
     if (act.dataset.act === "ordered" && it) {
-      // 単価があれば「単価 × 発注数」を発注金額として履歴に残し、月ごとの集計に使う
-      const amount = priceOf(it) !== null ? priceOf(it) * (it.qty || 0) : null;
-      patch(id, { ordered: true, orderedAt: Date.now(), lastOrderedAt: Date.now(), prevOrderedAt: it.lastOrderedAt ?? null, orderedAmount: amount, eta: null },
-        `「${fullName(it)}」を発注済みにしました`, `発注した（${it.qty}${it.unit || ""}${amount !== null ? `・${yen(amount)}` : ""}）`, { kind: "ordered", qty: it.qty || 0, amount });
+      // 単価があれば「単価 × 発注数」を発注金額の見込みとして履歴に残す。実際の金額は到着待ちの欄で直せる
+      const amount = priceOf(it) !== null ? priceOf(it) * (it.qty || 0) : null, now = Date.now();
+      patch(id, { ordered: true, orderedAt: now, lastOrderedAt: now, prevOrderedAt: it.lastOrderedAt ?? null, orderedAmount: amount, eta: null },
+        `「${fullName(it)}」を発注済みにしました`, `発注した（${it.qty}${it.unit || ""}${amount !== null ? `・${yen(amount)}` : ""}）`, { kind: "ordered", qty: it.qty || 0, amount, ...orderKey(now) });
     }
     if (act.dataset.act === "unorder" && it) {
       const amount = typeof it.orderedAmount === "number" ? it.orderedAmount : null;
       patch(id, { ordered: false, lastOrderedAt: it.prevOrderedAt ?? null, orderedAmount: null, eta: null }, "発注を取り消しました",
-        `発注を取り消し${amount !== null ? `（−${yen(amount)}）` : ""}`, { kind: "unordered", qty: it.qty || 0, amount: amount !== null ? -amount : null });
+        `発注を取り消し${amount !== null ? `（−${yen(amount)}）` : ""}`, { kind: "unordered", qty: it.qty || 0, amount: amount !== null ? -amount : null, ...orderKey(it.orderedAt) });
     }
     if (act.dataset.act === "arrived" && it) {
       clearTimeout(timers.get(id));
@@ -1336,6 +1363,16 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     }
   });
   document.addEventListener("change", e => {
+    if (e.target.classList.contains("amt-input")) {
+      // 総務さんの完了連絡で分かった実際の金額に直す。差額を「金額修正」として発注した月に計上する
+      const id = e.target.dataset.id, it = items.get(id), raw = e.target.value.trim();
+      const v = raw === "" ? null : Math.max(0, Math.round(Number(raw)));
+      const old = typeof it?.orderedAmount === "number" ? it.orderedAmount : null;
+      if (!it || Number.isNaN(v) || v === old) return;
+      patch(id, { orderedAmount: v }, "発注金額を直しました", `発注金額を ${old !== null ? yen(old) : "未入力"} → ${v !== null ? yen(v) : "未入力"} に修正`,
+        { kind: "adjust", qty: it.qty || 0, amount: (v ?? 0) - (old ?? 0), ...orderKey(it.orderedAt) });
+      return;
+    }
     if (!e.target.classList.contains("eta-input")) return;
     const id = e.target.dataset.id, it = items.get(id), v = e.target.value || null;
     if (!it || (it.eta || null) === v) return;
