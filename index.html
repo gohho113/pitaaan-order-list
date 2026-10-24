@@ -71,6 +71,10 @@ button{cursor:pointer}
 main{max-width:760px;margin:0 auto;padding:20px 16px 120px}
 .notice{background:var(--surface);border:1px solid var(--line);border-left:6px solid var(--signal);padding:12px 14px;border-radius:6px;margin-bottom:16px;color:var(--ink-2)}
 .notice[hidden]{display:none}
+.unk-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.unk-item{background:var(--surface-2);border:1px solid var(--line);border-left:6px solid var(--cat);border-radius:6px;padding:6px 12px 7px 10px;text-align:left;font-weight:700;color:var(--ink);cursor:pointer}
+.unk-cat{display:flex;align-items:center;gap:5px;font-size:.72rem;font-weight:500;color:var(--ink-2)}
+.unk-cat .dot{width:9px;height:9px;border-radius:2px;background:var(--cat)}
 
 /* order view */
 .hero{display:flex;align-items:flex-end;gap:14px;margin:4px 0 18px}
@@ -646,7 +650,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     if (!loaded) { el.innerHTML = `<div class="empty">読み込み中…</div>`; return; }
     const q = normText(query.trim());
     const shown = sorted(all.filter(it => (catFilter === "all" || it.cat === catFilter) && (!q || normText(fullName(it)).includes(q) || normText(it.note || "").includes(q))));
-    const unknown = all.filter(it => !isFlag(it) && stockOf(it) === null).length;
+    const unknown = sorted(all.filter(it => !isFlag(it) && stockOf(it) === null));
     const chips = [`<button class="chip" data-cat="all" aria-pressed="${catFilter === "all"}">すべて</button>`]
       .concat(CATS.map(c => `<button class="chip" data-cat="${c.id}" aria-pressed="${catFilter === c.id}" style="--cat:${c.color}"><span class="dot"></span>${esc(c.label)}</button>`)).join("");
 
@@ -698,7 +702,8 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       </div>
       <div class="list"></div>`;
     }
-    el.querySelector(".stock-notice").innerHTML = unknown ? `<div class="notice">在庫数が未確認の品目が${unknown}件あります。数を数えて「数を入力」から登録すると、発注リストの判定に使われます。</div>` : "";
+    el.querySelector(".stock-notice").innerHTML = unknown.length ? `<div class="notice">在庫数が未確認の品目が${unknown.length}件あります。数を数えて入力すると、発注リストの判定に使われます。品目を押すと、その場で数を入力できます。
+      <div class="unk-list">${unknown.map(it => `<button class="unk-item" data-edit="${esc(it.id)}" data-focus="stock" style="--cat:${catOf(it.cat).color}"><span class="unk-cat"><span class="dot"></span>${esc(catOf(it.cat).label)}</span>${esc(fullName(it))}</button>`).join("")}</div></div>` : "";
     el.querySelector(".chips").innerHTML = chips;
     el.querySelector(".list").innerHTML = body;
   }
