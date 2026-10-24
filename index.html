@@ -26,7 +26,7 @@
   --bg:#fffef2; --surface:#ffffff; --surface-2:#fdfde6; --ink:#3a2633; --ink-2:#7a6573; --line:#f4c3d7; --border:#e7367f;
   --pink:#e7367f; --pink-text:#c41f68; --orange:#f58a01; --brand-yellow:#e5e51c; --page-a:#fafad7; --page-b:#a1ddff; --grid:rgba(160,155,0,.10);
   --signal:#e5e51c; --signal-ink:#3a2633; --alert:#d6332c; --ok:#1d8a80; --focus:#1569b0;
-  --c-fab:#e7367f; --c-craft:#f58a01; --c-elec:#3aa8e8; --c-daily:#2fbfb2; --c-gear:#b2ad00;
+  --c-fab:#e7367f; --c-craft:#f58a01; --c-elec:#3aa8e8; --c-daily:#2fbfb2; --c-gear:#b2ad00; --c-kitchen:#8b5cd6;
   color-scheme:light;
   box-sizing:border-box;
   padding-top:env(safe-area-inset-top,0px);
@@ -37,7 +37,7 @@
     --bg:#1b1720; --surface:#26202b; --surface-2:#302a36; --ink:#fbf2f7; --ink-2:#c9b8c3; --line:#6a3c55; --border:#ff6aa6;
     --pink:#ff6aa6; --pink-text:#ff85b6; --orange:#ffa133; --brand-yellow:#e5e51c; --page-a:#1e1c12; --page-b:#10303f; --grid:rgba(255,255,255,.035);
     --signal:#e5e51c; --signal-ink:#2a1d26; --alert:#ff6b66; --ok:#5fd8cc; --focus:#8cc8ff;
-    --c-fab:#ff6aa6; --c-craft:#ffa133; --c-elec:#6cc2f2; --c-daily:#5fd8cc; --c-gear:#d9d43a;
+    --c-fab:#ff6aa6; --c-craft:#ffa133; --c-elec:#6cc2f2; --c-daily:#5fd8cc; --c-gear:#d9d43a; --c-kitchen:#b394f0;
     color-scheme:dark;
   }
 }
@@ -45,7 +45,7 @@
   --bg:#1b1720; --surface:#26202b; --surface-2:#302a36; --ink:#fbf2f7; --ink-2:#c9b8c3; --line:#6a3c55; --border:#ff6aa6;
     --pink:#ff6aa6; --pink-text:#ff85b6; --orange:#ffa133; --brand-yellow:#e5e51c; --page-a:#1e1c12; --page-b:#10303f; --grid:rgba(255,255,255,.035);
     --signal:#e5e51c; --signal-ink:#2a1d26; --alert:#ff6b66; --ok:#5fd8cc; --focus:#8cc8ff;
-    --c-fab:#ff6aa6; --c-craft:#ffa133; --c-elec:#6cc2f2; --c-daily:#5fd8cc; --c-gear:#d9d43a;
+    --c-fab:#ff6aa6; --c-craft:#ffa133; --c-elec:#6cc2f2; --c-daily:#5fd8cc; --c-gear:#d9d43a; --c-kitchen:#b394f0;
   color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:border-box}
@@ -420,6 +420,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     { id: "fab",   label: "レーザー・3Dプリンタ", color: "var(--c-fab)" },
     { id: "craft", label: "工作材料・文具",       color: "var(--c-craft)" },
     { id: "elec",  label: "電子工作・電池",       color: "var(--c-elec)" },
+    { id: "kitchen", label: "飲み物・キッチン用品", color: "var(--c-kitchen)" },
     { id: "daily", label: "衛生・日用品",         color: "var(--c-daily)" },
     { id: "gear",  label: "備品（マウスなど）",   color: "var(--c-gear)" },
   ];
@@ -575,6 +576,27 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     if ((prev?.min ?? 0) !== data.min) parts.push(`最低在庫 ${prev?.min ?? 0} → ${data.min}`);
     if (prev?.qty !== data.qty) parts.push(`発注数 ${prev?.qty ?? "?"} → ${data.qty}`);
     return parts.length ? `編集：${parts.join("、")}` : "内容を編集";
+  }
+  // 2026-10-24 「飲み物・キッチン用品」を新設：登録済みの7件を一度だけ移す。
+  // catV（ジャンルの版）が2になった備品は二度と動かさないので、あとで手で戻しても上書きしない
+  const KITCHEN_IDS = ["imvkn3kl02a2i", "imvkn4x2duk87", "imvkoy8g6y8jx", "imvkp4mwhlw5n", "imvkp83mqej8w", "imvkpwksd6qs5", "imvkmqlhtwmj2"];
+  let catMigrated = false;
+  function migrateCats() {
+    if (catMigrated || !col || !canWrite) return;
+    catMigrated = true;
+    const fs = firebase.firestore();
+    KITCHEN_IDS.forEach(id => {
+      const it = items.get(id);
+      if (!it || it.catV >= 2) return;
+      const ref = col.doc(id), from = catOf(it.cat).label;
+      fs.runTransaction(async t => {
+        const snap = await t.get(ref);
+        if (!snap.exists || (snap.data().catV || 0) >= 2) return false;
+        t.update(ref, { cat: "kitchen", catV: 2, updatedAt: Date.now(), updatedBy: who().name });
+        return true;
+      }).then(moved => { if (moved) logAct(it, `ジャンルを変更：${from} → 飲み物・キッチン用品`); })
+        .catch(e => console.warn("category move failed", e));
+    });
   }
   function cancelPendingStock(id) {
     clearTimeout(timers.get(id)); pending.delete(id); stockFrom.delete(id);
@@ -821,7 +843,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       .qr-label{border:1.5px dashed #999;border-radius:6px;padding:10px;display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;border-top:6px solid #888;break-inside:avoid}
       .qr-label svg{width:120px;height:120px}.n{font-weight:700;font-size:14px}.s{font-size:11px;color:#555}
       @media print{h1{display:none}}`;
-    const colors = { fab: "#7b5cd6", craft: "#e8743b", elec: "#2f8fd8", daily: "#2aa676", gear: "#8a6a4a" };
+    const colors = { fab: "#7b5cd6", craft: "#e8743b", elec: "#2f8fd8", kitchen: "#c0457f", daily: "#2aa676", gear: "#8a6a4a" };
     const html = `<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><title>PITAAAN！備品QRコード</title><style>${css}</style></head><body>
       <h1>PITAAAN！備品QRコード（印刷して切り取ってください）</h1><div class="qr-grid">${qrLabels(list).replace(/--cat:var\(--c-(\w+)\)/g, (m, k) => "border-top-color:" + (colors[k] || "#888"))}</div></body></html>`;
     try {
@@ -1243,6 +1265,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         items = new Map(snap.docs.map(d => [d.id, { id: d.id, ...d.data() }]));
         loaded = true;
         render();
+        migrateCats();
       }, err => {
         loaded = true;
         if (err.code === "permission-denied") { canWrite = false; notice("このアカウントでは備品リストを見られません。会社のGoogleアカウントでログインし直してください。"); render(); return; }
