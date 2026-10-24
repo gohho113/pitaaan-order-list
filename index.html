@@ -383,7 +383,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       <div class="field"><label for="f-qty">1回の発注数</label><input id="f-qty" type="number" min="1" inputmode="numeric" required></div>
     </div>
     <p class="field hint count-only" style="margin:0">在庫が「最低在庫」を下回ると、発注リストに自動で載ります。最低在庫と同じ数なら、まだ載りません。</p>
-    <div class="field"><label for="f-shop">購入先</label><input id="f-shop" maxlength="200" placeholder="例：Amazon、モノタロウ、ホームセンター"></div>
+    <div class="field"><label for="f-shop">購入先</label><select id="f-shop"></select><input id="f-shop-other" maxlength="200" placeholder="購入先を入力" aria-label="購入先（その他）" hidden></div>
     <div class="field"><label for="f-note">メモ</label><input id="f-note" maxlength="200" placeholder="型番・色・サイズなど"></div>
     <div class="field"><label for="f-last">最終発注日</label><input id="f-last" type="date"><span class="hint">「発注した」を押すと自動で更新されます。過去の発注日を入れておくこともできます</span></div>
     <div class="err" id="f-err"></div>
@@ -1031,7 +1031,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     $("#f-stock").value = s ?? "";
     $("#f-min").value = it?.min ?? 2;
     $("#f-qty").value = it?.qty ?? 5;
-    $("#f-shop").value = it && !isUrl(it.shop) ? (it.shop || "") : "";
+    fillShopSelect(it && !isUrl(it.shop) ? (it.shop || "") : "");
     $("#f-links").value = it ? linksOf(it).join("\n") : "";
     $("#f-note").value = it?.note || "";
     $("#f-err").textContent = "";
@@ -1042,6 +1042,20 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     $("#dlg").showModal();
     (focusStock ? $("#f-stock") : $("#f-name")).focus();
   }
+  // 購入先：よく使うお店＋登録済みの備品で使われているお店から選ぶ。なければ「その他」で入力
+  const SHOPS = ["Amazon", "モノタロウ", "ホームセンター"], SHOP_OTHER = "__other";
+  function fillShopSelect(current) {
+    const used = [...items.values()].map(i => String(i.shop || "").trim()).filter(s => s && !isUrl(s));
+    const list = [...new Set([...SHOPS, ...used, ...(current ? [current] : [])])];
+    $("#f-shop").innerHTML = `<option value="">（未設定）</option>` + list.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join("") + `<option value="${SHOP_OTHER}">その他（入力する）</option>`;
+    $("#f-shop").value = current;
+    $("#f-shop-other").value = ""; $("#f-shop-other").hidden = true;
+  }
+  $("#f-shop").onchange = () => {
+    const other = $("#f-shop").value === SHOP_OTHER;
+    $("#f-shop-other").hidden = !other;
+    if (other) $("#f-shop-other").focus();
+  };
   $("#f-cancel").onclick = () => $("#dlg").close();
   $("#copyclose").onclick = () => $("#copydlg").close();
   $("#form").addEventListener("submit", async ev => {
@@ -1056,7 +1070,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     const mode = "count";
     const prevMin = editingId ? items.get(editingId)?.min : 0;
     if ((mode === "count" && !(min >= 0)) || !(qty >= 1)) { $("#f-err").textContent = "最低在庫は0以上、発注数は1以上で入力してください"; return; }
-    const shopRaw = $("#f-shop").value.trim();
+    const shopRaw = ($("#f-shop").value === SHOP_OTHER ? $("#f-shop-other").value : $("#f-shop").value).trim();
     const lines = $("#f-links").value.split(/\s*\n\s*/).map(s => s.trim()).filter(Boolean);
     if (isUrl(shopRaw)) lines.unshift(shopRaw);
     const bad = lines.filter(s => !isUrl(s));
