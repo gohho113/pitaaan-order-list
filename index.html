@@ -397,7 +397,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     <div class="field"><label for="f-links">商品リンク</label><textarea id="f-links" rows="1" maxlength="3000" placeholder="https://… （1行に1つ。複数登録できます）"></textarea><span class="hint">いつも買っている商品ページのURLを貼り付けてください</span></div>
     <div class="grid2">
       <div class="field"><label for="f-cat">ジャンル</label><select id="f-cat"></select></div>
-      <div class="field"><label for="f-unit">単位</label><input id="f-unit" maxlength="10" placeholder="枚・本・個"></div>
+      <div class="field"><label for="f-unit">単位（在庫を数える単位）</label><input id="f-unit" maxlength="10" placeholder="枚・本・個"></div>
     </div>
     <div class="grid3">
       <div class="field count-only"><label for="f-stock">いまの在庫</label><input id="f-stock" type="number" min="0" inputmode="numeric" placeholder="未確認"></div>
@@ -405,6 +405,11 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       <div class="field"><label for="f-qty">1回の発注数</label><input id="f-qty" type="number" min="1" inputmode="numeric" required></div>
     </div>
     <p class="field hint count-only" style="margin:0">在庫が「最低在庫」を下回ると、発注リストに自動で載ります。最低在庫と同じ数なら、まだ載りません。</p>
+    <div class="grid2">
+      <div class="field"><label for="f-pack">1セットの入り数</label><input id="f-pack" type="number" min="1" inputmode="numeric" placeholder="1（バラで発注）"></div>
+      <div class="field"><label for="f-packunit">発注の単位</label><input id="f-packunit" maxlength="10" placeholder="セット・箱・パック"></div>
+    </div>
+    <p class="field hint" id="f-pack-hint" style="margin:0"></p>
     <div class="field"><label for="f-price">単価（円・税込）</label><input id="f-price" type="number" min="0" step="1" inputmode="numeric" placeholder="未入力"><span class="hint" id="f-price-hint"></span></div>
     <div class="field"><label for="f-shop">購入先</label><select id="f-shop"></select><input id="f-shop-other" maxlength="200" placeholder="購入先を入力" aria-label="購入先（その他）" hidden></div>
     <div class="field"><label for="f-note">メモ</label><input id="f-note" maxlength="200" placeholder="型番・色・サイズなど"></div>
@@ -589,6 +594,11 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     });
   }
   const yen = n => "¥" + Math.round(n).toLocaleString("ja-JP");
+  // まとめ買い：在庫は「単位」（個など）で数え、発注は「入り数」ごとのセットで行う。入り数1ならバラで発注
+  const packOf = it => Math.max(1, parseInt(it.pack, 10) || 1);
+  const packUnitOf = it => packOf(it) > 1 ? (it.packUnit || "セット") : (it.unit || "");
+  const arriveAdd = it => (it.qty || 0) * packOf(it);
+  const orderQtyText = it => packOf(it) > 1 ? `${it.qty}${packUnitOf(it)}（${arriveAdd(it)}${it.unit || ""}）` : `${it.qty}${it.unit || ""}`;
   const priceOf = it => (typeof it.price === "number" && it.price >= 0) ? it.price : null;
   const WD = ["日", "月", "火", "水", "木", "金", "土"];
   // "2026-10-30" → "10/30（金）"
@@ -606,6 +616,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     if (before !== data.stock) parts.push(`在庫 ${before ?? "未入力"} → ${data.stock ?? "未入力"}`);
     if ((prev?.min ?? 0) !== data.min) parts.push(`最低在庫 ${prev?.min ?? 0} → ${data.min}`);
     if (prev?.qty !== data.qty) parts.push(`発注数 ${prev?.qty ?? "?"} → ${data.qty}`);
+    if (prev && packOf(prev) !== data.pack) parts.push(`入り数 ${packOf(prev)} → ${data.pack}`);
     const pp = prev ? priceOf(prev) : null;
     if (pp !== data.price) parts.push(`単価 ${pp !== null ? yen(pp) : "未入力"} → ${data.price !== null ? yen(data.price) : "未入力"}`);
     return parts.length ? `編集：${parts.join("、")}` : "内容を編集";
@@ -685,12 +696,12 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         <span class="eta-txt">${typeof it.orderedAmount === "number" ? yen(it.orderedAmount) : "連絡が来たら入力"}</span></label>` : "";
     const btns = mode === "need"
       ? `<button class="btn sm" data-act="ordered" data-id="${esc(it.id)}" ${canWrite ? "" : "disabled"}>発注した</button>`
-      : `<button class="btn sm" data-act="arrived" data-id="${esc(it.id)}" ${canWrite ? "" : "disabled"}>${isFlag(it) ? "届いた" : `届いた（在庫＋${esc(it.qty)}）`}</button>
+      : `<button class="btn sm" data-act="arrived" data-id="${esc(it.id)}" ${canWrite ? "" : "disabled"}>${isFlag(it) ? "届いた" : `届いた（在庫＋${esc(arriveAdd(it))}${unit}）`}</button>
          <button class="btn ghost sm" data-act="unorder" data-id="${esc(it.id)}" ${canWrite ? "" : "disabled"}>発注を取り消す</button>`;
     return `<li class="order-row" style="--cat:${catOf(it.cat).color}">
       <div class="nm">${esc(fullName(it))}</div>
-      <div class="qty">${esc(it.qty)}<small>${unit}</small></div>
-      <div class="meta"><span>${isFlag(it) ? "少なくなったと報告あり" : `在庫 ${s ?? "?"}${unit}／最低 ${esc(it.min)}${unit}`}</span><span>${lastOrderedText(it)}</span>${shop}${price}</div>
+      <div class="qty">${esc(it.qty)}<small>${esc(packUnitOf(it))}</small></div>
+      <div class="meta"><span>${isFlag(it) ? "少なくなったと報告あり" : `在庫 ${s ?? "?"}${unit}／最低 ${esc(it.min)}${unit}`}</span>${packOf(it) > 1 ? `<span>1${esc(packUnitOf(it))}＝${packOf(it)}${unit}</span>` : ""}<span>${lastOrderedText(it)}</span>${shop}${price}</div>
       ${eta}
       ${linksHtml(it)}
       <div class="row-actions">${btns}</div>
@@ -1087,6 +1098,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         <li><b>いまの在庫</b>：実際に数えた数を入れます。</li>
         <li><b>最低在庫</b>：在庫がこの数を下回ると発注リストに載ります（例：最低在庫が1なら、残り0になったとき）。土曜に発注してから届くまでの約1週間をしのげるよう、<b>約10日分</b>を目安に決めます。</li>
         <li><b>1回の発注数</b>：1回の注文で買う数です。発注メモと「届いた」の計算に使われます。</li>
+        <li><b>1セットの入り数・発注の単位</b>：4個入りのセットで買うものなどは、入り数（4）と単位（セット）を入れます。在庫と最低在庫は個数で数え、発注リストには「1セット（4個）」のようにセットで並びます。「届いた」を押すと、在庫が4個増えます。</li>
         <li><b>単価</b>：1単位あたりの値段（税込）です。入れておくと「単価 × 発注数」が発注金額として記録され、「履歴」タブの上で月ごとの合計を見られます。</li></ol>
         <p>使わなくなった備品は、編集画面または発注リストの「削除」で消せます。間違えて消さないよう、もう一度押したときだけ削除されます。</p>`)}
 
@@ -1147,7 +1159,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     const need = sorted([...items.values()].filter(needsOrder));
     let out = "以下PITAAANにお願いします！\n時間指定　火曜日から土曜日 10:00-19:00\n";
     need.forEach(it => {
-      out += `\n${fullName(it)} × ${it.qty}${it.unit || ""}\n`;
+      out += `\n${fullName(it)} × ${orderQtyText(it)}\n`;
       linksOf(it).forEach(u => { out += `${u}\n`; });
     });
     return out;
@@ -1175,6 +1187,8 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     $("#f-min").value = it?.min ?? 2;
     $("#f-qty").value = it?.qty ?? 5;
     $("#f-price").value = it && priceOf(it) !== null ? priceOf(it) : "";
+    $("#f-pack").value = it && packOf(it) > 1 ? packOf(it) : "";
+    $("#f-packunit").value = it?.packUnit || "";
     priceHint();
     fillShopSelect(it && !isUrl(it.shop) ? (it.shop || "") : "");
     $("#f-links").value = it ? linksOf(it).join("\n") : "";
@@ -1203,13 +1217,18 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     if (other) $("#f-shop-other").focus();
   };
   // 単価の下に「1回の発注でいくらか」を出す
+  // 単価・まとめ買いの下に、1回の発注で何がいくつ届くか・いくらかを出す
   function priceHint() {
     const p = parseInt($("#f-price").value, 10), q = parseInt($("#f-qty").value, 10), u = $("#f-unit").value.trim();
+    const pack = Math.max(1, parseInt($("#f-pack").value, 10) || 1), pu = pack > 1 ? ($("#f-packunit").value.trim() || "セット") : u;
+    $("#f-pack-hint").textContent = pack > 1
+      ? `在庫は${u || "個"}で数え、発注は1${pu}（${pack}${u}入り）ずつ。1回の発注で${q >= 1 ? `${q}${pu}＝${q * pack}${u}` : "（発注数を入力）"}届き、「届いた」で在庫がその分増えます。`
+      : "セット単位で買う備品は、入り数を入れると「在庫は個数・発注はセット」で管理できます（例：4個入りを1セットずつ発注）。";
     $("#f-price-hint").textContent = p >= 0 && q >= 1
-      ? `${yen(p)} × ${q}${u} ＝ 1回の発注で ${yen(p * q)}。発注した金額は「履歴」タブで月ごとに集計されます`
-      : `${u || "1単位"}あたりの値段です。入れておくと、発注した金額が「履歴」タブで月ごとに集計されます`;
+      ? `${yen(p)} × ${q}${pu} ＝ 1回の発注で ${yen(p * q)}。発注した金額は「履歴」タブで月ごとに集計されます`
+      : `${pu || "1単位"}あたりの値段です。入れておくと、発注した金額が「履歴」タブで月ごとに集計されます`;
   }
-  ["#f-price", "#f-qty", "#f-unit"].forEach(s => $(s).addEventListener("input", priceHint));
+  ["#f-price", "#f-qty", "#f-unit", "#f-pack", "#f-packunit"].forEach(s => $(s).addEventListener("input", priceHint));
   // 商品リンク欄はふだん1行。リンクが複数あるときだけ、その行数ぶん（最大5行）広げる
   function fitLinks() {
     const el = $("#f-links");
@@ -1241,6 +1260,10 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     const priceRaw = $("#f-price").value.trim();
     data.price = priceRaw === "" ? null : Math.max(0, Math.round(Number(priceRaw)));
     if (Number.isNaN(data.price)) { $("#f-err").textContent = "単価は数字で入力してください"; return; }
+    const packRaw = $("#f-pack").value.trim();
+    data.pack = packRaw === "" ? 1 : parseInt(packRaw, 10);
+    if (!(data.pack >= 1)) { $("#f-err").textContent = "1セットの入り数は1以上で入力してください"; return; }
+    data.packUnit = data.pack > 1 ? ($("#f-packunit").value.trim() || "セット") : "";
     const lastVal = $("#f-last").value;
     const prevIt = editingId ? items.get(editingId) : null;
     if (!lastVal) data.lastOrderedAt = null;
@@ -1342,7 +1365,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       // 単価があれば「単価 × 発注数」を発注金額の見込みとして履歴に残す。実際の金額は到着待ちの欄で直せる
       const amount = priceOf(it) !== null ? priceOf(it) * (it.qty || 0) : null, now = Date.now();
       patch(id, { ordered: true, orderedAt: now, lastOrderedAt: now, prevOrderedAt: it.lastOrderedAt ?? null, orderedAmount: amount, eta: null },
-        `「${fullName(it)}」を発注済みにしました`, `発注した（${it.qty}${it.unit || ""}${amount !== null ? `・${yen(amount)}` : ""}）`, { kind: "ordered", qty: it.qty || 0, amount, ...orderKey(now) });
+        `「${fullName(it)}」を発注済みにしました`, `発注した（${orderQtyText(it)}${amount !== null ? `・${yen(amount)}` : ""}）`, { kind: "ordered", qty: it.qty || 0, amount, ...orderKey(now) });
     }
     if (act.dataset.act === "unorder" && it) {
       const amount = typeof it.orderedAmount === "number" ? it.orderedAmount : null;
@@ -1353,7 +1376,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       clearTimeout(timers.get(id));
       const base = stockOf(it) ?? 0; pending.delete(id);
       if (isFlag(it)) { patch(id, { ordered: false, low: false, eta: null }, `「${fullName(it)}」の到着を記録しました`, "届いた"); return; }
-      patch(id, { ordered: false, stock: base + (it.qty || 0), eta: null }, `「${fullName(it)}」の在庫に${it.qty}${it.unit || ""}追加しました`, `届いた（在庫 ${base} → ${base + (it.qty || 0)}）`);
+      patch(id, { ordered: false, stock: base + arriveAdd(it), eta: null }, `「${fullName(it)}」の在庫に${arriveAdd(it)}${it.unit || ""}追加しました`, `届いた（在庫 ${base} → ${base + arriveAdd(it)}）`);
     }
   });
   document.addEventListener("input", e => {
