@@ -1159,9 +1159,10 @@ dialog{border:3px solid var(--pink);border-radius:18px}
   // ---------- copy ----------
   function orderText() {
     const need = sorted([...items.values()].filter(needsOrder));
-    let out = "以下PITAAANにお願いします！\n時間指定　火曜日から土曜日 10:00-19:00\n";
+    // 見出しのあとに1行あけ、品目どうしは行をあけずに続ける
+    let out = "以下PITAAANにお願いします！\n時間指定　火曜日から土曜日 10:00-19:00\n\n";
     need.forEach(it => {
-      out += `\n${fullName(it)} × ${orderQtyText(it)}\n`;
+      out += `${fullName(it)} × ${orderQtyText(it)}\n`;
       linksOf(it).forEach(u => { out += `${u}\n`; });
     });
     return out;
