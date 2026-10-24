@@ -721,7 +721,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       </div>
       ${n ? `<div class="actions"><button class="btn primary wide" data-act="copy">📋 発注メモをコピー</button></div>` : ""}
       ${n ? `<ul class="list">${need.map(it => orderRow(it, "need")).join("")}</ul>`
-          : `<div class="empty">在庫が減ってきたら「在庫」タブで数を減らしてください。最低在庫を下回ると、ここに表示されます。</div>`}
+          : `<div class="empty">毎週土曜の見回りで在庫を数えて入力すると、最低在庫を下回った備品がここに表示されます。</div>`}
       <h2 class="sec">発注済み・到着待ち <span class="count">${waiting.length}件</span></h2>
       ${waiting.length ? `<ul class="list">${waiting.map(it => orderRow(it, "wait")).join("")}</ul>`
                        : `<div class="empty">発注済みの品目はありません。</div>`}
@@ -939,7 +939,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       const c = catOf(it.cat);
       return `<div class="qr-label" style="--cat:${c.color}">${qrSvg(BASE_URL + "#q-" + it.id)}
         <div class="n">${esc(fullName(it))}</div>
-        <div class="s">使ったら読み取って数を減らす</div></div>`;
+        <div class="s">見回りのときに読み取って数を入力</div></div>`;
     }).join("");
   }
   function qrList(all) { return sorted(all.filter(it => catFilter === "all" || it.cat === catFilter)); }
@@ -1003,13 +1003,6 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         ${phone(350, 40, `<rect x="11" y="22" width="48" height="14" rx="3" fill="${sig}"/><text x="35" y="33" font-size="9" font-weight="700" text-anchor="middle" fill="var(--signal-ink)">発注リスト</text>
           <rect x="11" y="42" width="48" height="10" rx="2" fill="${sur2}" stroke="${line}"/><rect x="11" y="56" width="48" height="10" rx="2" fill="${sur2}" stroke="${line}"/><rect x="11" y="70" width="48" height="10" rx="2" fill="${sur2}" stroke="${line}"/>`)}
         <circle cx="418" cy="44" r="13" fill="${sig}" stroke="${ink}" stroke-width="2.5"/><text x="418" y="49" font-size="14" font-weight="700" text-anchor="middle" fill="var(--signal-ink)">3</text>`, "棚の備品が減ると、スマホの発注リストに自動で並ぶイラスト"),
-      use: svg("0 0 260 150", `
-        ${box(14, 64, 92, 66, "var(--c-elec)")}
-        ${arrow(112, 82, 144, 82)}
-        ${phone(150, 18, `<text x="35" y="34" font-size="8" text-anchor="middle" fill="${ink}" font-weight="700">単3電池</text>
-          <rect x="9" y="48" width="16" height="16" rx="3" fill="${sig}"/><text x="17" y="61" font-size="14" font-weight="700" text-anchor="middle" fill="var(--signal-ink)">−</text>
-          <text x="35" y="62" font-size="15" font-weight="700" text-anchor="middle" fill="${ink}">7</text>
-          <rect x="45" y="48" width="16" height="16" rx="3" fill="${sur2}" stroke="${line}"/><text x="53" y="61" font-size="13" font-weight="700" text-anchor="middle" fill="${ink}">＋</text>`)}`, "棚のQRコードをスマホで読み取り、−ボタンで数を減らすイラスト"),
       order: svg("0 0 260 150", `
         ${phone(10, 15, `<rect x="11" y="20" width="48" height="12" rx="3" fill="${sig}"/><text x="35" y="29" font-size="7.5" font-weight="700" text-anchor="middle" fill="var(--signal-ink)">メモをコピー</text>
           <rect x="11" y="40" width="48" height="22" rx="3" fill="${sur2}" stroke="${line}"/><rect x="15" y="44" width="26" height="4" rx="2" fill="${ink}" opacity=".7"/><rect x="15" y="52" width="18" height="3" rx="1.5" fill="var(--focus)" opacity=".7"/>
@@ -1068,19 +1061,15 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     $("#v-help").innerHTML = `<div class="help">
       <div class="hhero"><img src="${IMG.kids}" alt="PITAAAN！の子どもたちのイラスト"></div>
       <h2>HOW TO USE 発注リスト！</h2>
-      <p class="lead">材料が切れて、子どもたちのワクワクする「きっかけ」が止まらないように。PITAAAN！の備品の在庫を、スタッフ全員で記録するリストです。在庫が「最低在庫」を下回ると、その備品が「発注リスト」に自動で並びます。発注のたびに棚を見て回る必要はありません。</p>
+      <p class="lead">材料が切れて、子どもたちのワクワクする「きっかけ」が止まらないように。PITAAAN！の備品の在庫を、スタッフ全員で記録するリストです。毎週土曜の見回りで在庫を数えて入力すると、「最低在庫」を下回った備品が「発注リスト」に自動で並びます。ふだん備品を使うときは、リストを操作しなくて大丈夫です。</p>
 
-      ${step(ILL.use, "📦 備品を使ったら、数を減らそう", `
-        <p>備品を使ったら、使った分だけ数を減らしてください。スタッフ全員にお願いしたいのはこれだけです。</p>
-        <p>電池やボールペン、セロハンテープなどは、セットで買っていても<b>1本・1個ずつ</b>数えます。電池を2本使ったら「−」を2回、ペンを1本出したら1回です。在庫タブの数字の横にある単位（本・個・巻など）が、数える単位です。</p>
-        <p>棚のQRコードを読み取るか、「在庫」タブで備品を探して、「−」を使った数だけ押します。品名で検索したり、ジャンルで絞り込んだりできます。</p>
-        <p>押し間違えたら「＋」で戻せます。数字をタップすると、在庫数を直接入力して直せます。</p>`)}
 
-      ${step(ILL.week, "🗓️ 毎週土曜の閉館前に見回りしよう", `
-        <p>毎週<b>土曜の閉館前</b>に在庫を確認して、発注をしましょう。土曜に発注すると、<b>木曜ごろに届きます</b>。</p>
-        <ol><li>棚を一周して、リストの数と合っていない備品があれば直します。QRコードを読み取ると早いです。</li>
-        <li>「発注リスト」タブを開きます。備品が並んでいたら、下の「発注をしよう」の手順で発注します。</li></ol>
-        <p>閉館中は備品が減らないので、土曜に数えた在庫が火曜の開館まで正しいままです。週の途中で急に減った備品に気づいたら、その日のうちに発注してかまいません。</p>`)}
+      ${step(ILL.week, "🗓️ 毎週土曜の閉館前に在庫を数えよう", `
+        <p>在庫の記録は、毎週<b>土曜の閉館前</b>の見回りでまとめて行います。ふだん備品を使ったときは、リストを操作しなくて大丈夫です。</p>
+        <ol><li>棚を一周して、備品ごとに<b>今ある数</b>を数えます。電池・ペン・テープなどは、在庫タブの数字の横の単位（本・個・巻など）で、1本・1個ずつ数えます。</li>
+        <li>在庫の数字をタップして、数えた数を入力します。棚のQRコードを読み取ると、その備品の画面がすぐ開きます。</li>
+        <li>「発注リスト」タブを開きます。最低在庫を下回った備品が並んでいたら、下の「発注をしよう」の手順で発注します。土曜に発注すると、<b>木曜ごろに届きます</b>。</li></ol>
+        <p>閉館中は備品が減らないので、土曜に数えた在庫が火曜の開館まで正しいままです。週の途中で「もうすぐなくなりそう」と気づいたら、その備品の数を入力すれば発注リストに載ります。</p>`)}
 
       ${step(ILL.order, "🛒 発注をしよう", `
         <ol><li>「発注リスト」タブを開きます。発注が必要な備品と、それぞれの発注数が並んでいます。</li>
@@ -1098,7 +1087,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         <li><b>商品リンク</b>：いつも買っている商品ページのURLを貼り付けます。1行に1つずつ、複数登録できます。</li>
         <li><b>単位</b>：在庫を数える単位です（本・個・巻・枚など）。ふだん使うときの1つ分にしておくと、減らすときに迷いません。</li>
         <li><b>いまの在庫</b>：実際に数えた数を、上の単位で入れます。</li>
-        <li><b>最低在庫</b>：在庫がこの数を下回ると発注リストに載ります。在庫と同じ単位で決めます（例：単3電池の最低在庫が4本なら、残り3本になったとき）。土曜に発注してから届くまでの約1週間をしのげるよう、<b>約10日分</b>を目安に決めます。</li>
+        <li><b>最低在庫</b>：在庫がこの数を下回ると発注リストに載ります。在庫と同じ単位で決めます（例：単3電池の最低在庫が4本なら、残り3本になったとき）。在庫を数えるのは週1回なので、次の土曜に気づいて発注し、届くまで（最大で約2週間）をしのげるよう、<b>約2週間分</b>を目安に決めます。</li>
         <li><b>1回の発注数</b>：1回の注文で買う数です。セットで買う備品は、セットの数（例：2パック）を入れます。発注メモと「届いた」の計算に使われます。</li>
         <li><b>1セットの入り数・発注の単位</b>：4個入りのセットで買うものなどは、入り数（4）と単位（セット）を入れます。在庫と最低在庫は個数で数え、発注リストには「1セット（4個）」のようにセットで並びます。「届いた」を押すと、在庫が4個増えます。</li>
         <li><b>単価</b>：発注1回分の単位（バラなら1個、セットなら1セット）あたりの値段（税込）です。入れておくと「単価 × 発注数」が発注金額として記録され、「履歴」タブの上で月ごとの合計を見られます。</li></ol>
