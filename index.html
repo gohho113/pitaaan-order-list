@@ -372,7 +372,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     <h3 id="dlg-title">備品を登録</h3>
     <div class="field"><label for="f-name">品名</label><input id="f-name" required maxlength="60" placeholder="例：MDF板 3mm"></div>
     <div class="field"><label for="f-var">色・種類</label><input id="f-var" maxlength="30" placeholder="例：白、黒、透明"><span class="hint">色ごとに在庫・リンク・発注を分けたいときに入力します。同じ品名で色違いを登録すると並んで表示されます</span></div>
-    <div class="field"><label for="f-links">商品リンク</label><textarea id="f-links" rows="2" maxlength="3000" placeholder="https://… （1行に1つ。複数登録できます）"></textarea><span class="hint">いつも買っている商品ページのURLを貼り付けてください</span></div>
+    <div class="field"><label for="f-links">商品リンク</label><textarea id="f-links" rows="1" maxlength="3000" placeholder="https://… （1行に1つ。複数登録できます）"></textarea><span class="hint">いつも買っている商品ページのURLを貼り付けてください</span></div>
     <div class="grid2">
       <div class="field"><label for="f-cat">ジャンル</label><select id="f-cat"></select></div>
       <div class="field"><label for="f-unit">単位</label><input id="f-unit" maxlength="10" placeholder="枚・本・個"></div>
@@ -1033,6 +1033,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     $("#f-qty").value = it?.qty ?? 5;
     fillShopSelect(it && !isUrl(it.shop) ? (it.shop || "") : "");
     $("#f-links").value = it ? linksOf(it).join("\n") : "";
+    fitLinks();
     $("#f-note").value = it?.note || "";
     $("#f-err").textContent = "";
     $("#f-del").hidden = !it || !canWrite;
@@ -1056,6 +1057,12 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     $("#f-shop-other").hidden = !other;
     if (other) $("#f-shop-other").focus();
   };
+  // 商品リンク欄はふだん1行。リンクが複数あるときだけ、その行数ぶん（最大5行）広げる
+  function fitLinks() {
+    const el = $("#f-links");
+    el.rows = Math.min(5, Math.max(1, el.value.split("\n").length));
+  }
+  $("#f-links").addEventListener("input", fitLinks);
   $("#f-cancel").onclick = () => $("#dlg").close();
   $("#copyclose").onclick = () => $("#copydlg").close();
   $("#form").addEventListener("submit", async ev => {
@@ -1109,6 +1116,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     $("#dlg-title").textContent = "色違いを登録";
     $("#f-save").textContent = "登録";
     ["#f-var", "#f-links", "#f-stock", "#f-note", "#f-last"].forEach(s => $(s).value = "");
+    fitLinks();
     $("#f-del").hidden = true; $("#f-dup").hidden = true; $("#f-err").textContent = "";
     $("#f-var").focus();
   };
