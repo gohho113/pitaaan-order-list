@@ -1057,10 +1057,14 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         ${arrow(122, 80, 150, 80)}
         ${box(160, 50, 86, 72, "var(--c-fab)")}<g transform="rotate(-6 203 92)">${qrMini(186, 72, 34)}</g>`, "QRコードを印刷して箱に貼るイラスト"),
       tip: svg("0 0 260 150", `
-        <g transform="translate(30 18)"><rect width="120" height="112" rx="10" fill="${sur}" stroke="${ink}" stroke-width="2.5"/><rect width="120" height="26" rx="10" fill="var(--c-elec)"/><rect y="16" width="120" height="10" fill="var(--c-elec)"/>
-          ${Array.from({ length: 12 }, (_, i) => `<rect x="${12 + (i % 4) * 26}" y="${36 + Math.floor(i / 4) * 24}" width="18" height="16" rx="3" fill="${sur2}" stroke="${line}"/>`).join("")}
-          <path d="M66 82 l6 6 l12 -14" fill="none" stroke="var(--ok)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></g>
-        ${box(172, 70, 30, 24, "var(--c-elec)")}${box(206, 76, 30, 18, "var(--c-elec)")}<text x="204" y="118" font-size="11" font-weight="700" text-anchor="middle" fill="${ink}">1パック</text>`, "月1回の在庫チェックのイラスト"),
+        <rect x="8" y="10" width="118" height="130" rx="10" fill="${sur}" stroke="${line}" stroke-width="2"/>
+        <text x="67" y="34" font-size="14" font-weight="700" text-anchor="middle" fill="${ink}">1本・1個ずつ</text>
+        ${[0, 1, 2, 3].map(i => `<g transform="translate(${26 + i * 22} 50)"><rect x="5" width="6" height="5" rx="1.5" fill="${ink}"/><rect y="4" width="16" height="44" rx="4" fill="var(--c-elec)"/><rect x="3" y="10" width="4" height="30" rx="2" fill="#fff" opacity=".5"/></g>`).join("")}
+        <text x="67" y="122" font-size="11" font-weight="700" text-anchor="middle" fill="var(--ink-2)">電池・ペンなど</text>
+        <rect x="134" y="10" width="118" height="130" rx="10" fill="${sur}" stroke="${line}" stroke-width="2"/>
+        <text x="193" y="34" font-size="14" font-weight="700" text-anchor="middle" fill="${ink}">箱・袋のまま</text>
+        ${box(158, 52, 70, 50, "var(--c-kitchen)")}<text x="193" y="84" font-size="11" font-weight="700" text-anchor="middle" fill="#fff">100本入</text>
+        <text x="193" y="122" font-size="11" font-weight="700" text-anchor="middle" fill="var(--ink-2)">コーヒーなど</text>`, "電池などは1本ずつ、スティックコーヒーなど大量に入ったものは箱のまま数えるイラスト"),
     };
 
     const step = (ill, title, body) => `<section class="hstep"><div class="hill">${ill}</div><div class="htxt"><h3>${title}</h3>${body}</div></section>`;
