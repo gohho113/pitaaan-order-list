@@ -1012,6 +1012,13 @@ dialog{border:3px solid var(--pink);border-radius:18px}
           <text x="50" y="26" font-size="8" font-weight="700" text-anchor="middle" fill="${ink}">PITAAAN！に</text><text x="50" y="37" font-size="8" font-weight="700" text-anchor="middle" fill="${ink}">お願いします！</text>
           <rect x="14" y="48" width="60" height="5" rx="2.5" fill="${ink}" opacity=".6"/><rect x="14" y="58" width="44" height="4" rx="2" fill="var(--focus)" opacity=".7"/>
           <rect x="14" y="72" width="66" height="5" rx="2.5" fill="${ink}" opacity=".6"/><rect x="14" y="82" width="40" height="4" rx="2" fill="var(--focus)" opacity=".7"/></g>`, "発注リストから発注メモをコピーするイラスト"),
+      use: svg("0 0 260 150", `
+        ${box(14, 64, 92, 66, "var(--c-elec)")}
+        ${arrow(112, 82, 144, 82)}
+        ${phone(150, 18, `<text x="35" y="34" font-size="8" text-anchor="middle" fill="${ink}" font-weight="700">単3電池</text>
+          <rect x="9" y="48" width="16" height="16" rx="3" fill="${sig}"/><text x="17" y="61" font-size="14" font-weight="700" text-anchor="middle" fill="var(--signal-ink)">−</text>
+          <text x="35" y="62" font-size="15" font-weight="700" text-anchor="middle" fill="${ink}">7</text>
+          <rect x="45" y="48" width="16" height="16" rx="3" fill="${sur2}" stroke="${line}"/><text x="53" y="61" font-size="13" font-weight="700" text-anchor="middle" fill="${ink}">＋</text>`)}`, "棚のQRコードをスマホで読み取り、在庫の数を入力するイラスト"),
       week: svg("0 0 260 150", (() => {
         const days = [["土", "見回り", "発注する", "sat"], ["日", "休館", "", "off"], ["月", "手配", "", ""], ["火", "", "", ""], ["水", "", "", ""], ["木", "届く", "", "arrive"]];
         return `<rect x="8" y="8" width="244" height="134" rx="10" fill="${sur}" stroke="${ink}" stroke-width="2.5"/>` + days.map(([d, a, b, k], i) => {
@@ -1067,9 +1074,13 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       ${step(ILL.week, "🗓️ 毎週土曜の閉館前に在庫を数えよう", `
         <p>在庫の記録は、毎週<b>土曜の閉館前</b>の見回りでまとめて行います。ふだん備品を使ったときは、リストを操作しなくて大丈夫です。</p>
         <ol><li>棚を一周して、備品ごとに<b>今ある数</b>を数えます。電池・ペン・テープなどは、在庫タブの数字の横の単位（本・個・巻など）で、1本・1個ずつ数えます。</li>
-        <li>在庫の数字をタップして、数えた数を入力します。棚のQRコードを読み取ると、その備品の画面がすぐ開きます。</li>
+        <li>数えた数をリストに入力します（下の「数えた数を入力しよう」）。</li>
         <li>「発注リスト」タブを開きます。最低在庫を下回った備品が並んでいたら、下の「発注をしよう」の手順で発注します。土曜に発注すると、<b>木曜ごろに届きます</b>。</li></ol>
         <p>閉館中は備品が減らないので、土曜に数えた在庫が火曜の開館まで正しいままです。週の途中で「もうすぐなくなりそう」と気づいたら、その備品の数を入力すれば発注リストに載ります。</p>`)}
+
+      ${step(ILL.use, "📱 数えた数を入力しよう", `
+        <p>棚のQRコードをスマホのカメラで読み取ると、その備品の画面が開きます。QRコードがないときは、「在庫」タブで品名を探します（品名の検索や、ジャンルでの絞り込みができます）。</p>
+        <p>在庫の数字をタップして、数えた数をそのまま入力します。1つ2つのずれなら、「−」「＋」で直してもかまいません。</p>`)}
 
       ${step(ILL.order, "🛒 発注をしよう", `
         <ol><li>「発注リスト」タブを開きます。発注が必要な備品と、それぞれの発注数が並んでいます。</li>
