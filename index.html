@@ -940,14 +940,18 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         <div class="sub" style="color:var(--ink-2);font-size:.85rem">${lastOrderedText(it)}</div>
         ${it.updatedBy ? `<div class="sub" style="color:var(--ink-2);font-size:.85rem">最終更新：${esc(it.updatedBy)}</div>` : ""}
       </div>
-      <p style="text-align:center;margin-top:20px"><button class="btn scan" data-act="scan">📷 次のQRを読み取る</button></p>
+      <p style="text-align:center;margin-top:20px"><button class="btn scan" data-act="scan" data-skip="${esc(it.id)}">📷 次のQRを読み取る</button></p>
       <p style="text-align:center;margin-top:12px"><button class="btn ghost" data-go="stock">在庫一覧を見る</button> <button class="btn ghost" data-go="order">発注リストを見る</button></p>`;
   }
 
   // ---------- in-app QR scanner ----------
   // 棚のQRコード（URL#q-<備品ID>）をアプリの中のカメラで読み、その備品の画面を開く
   const JSQR_SRC = "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";
+  // 1秒に約8回カメラの映像を調べる（毎フレームより電池にやさしい）
+  const SCAN_INTERVAL = 120;
   let scanStream = null, scanRaf = 0, scanBusyUntil = 0;
+  // 「次のQRを読み取る」では、さっき読んだ備品のQRがまだカメラに映っているので、それは読み飛ばす
+  let scanSkipId = null;
   const scanCanvas = document.createElement("canvas");
   function loadJsQR() {
     if (window.jsQR) return Promise.resolve();
@@ -957,8 +961,9 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       document.head.appendChild(s);
     });
   }
-  function scanMsg(text, warn) { const m = $("#scan-msg"); m.textContent = text; m.classList.toggle("warn", !!warn); }
-  async function startScan() {
+  function scanMsg(text, warn) { const m = $("#scan-msg"); m.textContent = text; m.classList.toggle("warn", !!warn); delete m.dataset.skip; }
+  async function startScan(skipId = null) {
+    scanSkipId = skipId;
     if (!navigator.mediaDevices?.getUserMedia) { toast("このブラウザではカメラを使えません。スマホのカメラでQRコードを読んでください"); return; }
     $("#scanner").hidden = false;
     scanMsg("カメラを準備しています…");
@@ -969,7 +974,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       v.srcObject = scanStream;
       await v.play();
       scanMsg("棚のQRコードを枠の中に映してください");
-      scanRaf = requestAnimationFrame(scanTick);
+      scanRaf = setTimeout(scanTick, SCAN_INTERVAL);
     } catch (e) {
       stopScan();
       if (e && e.name === "NotAllowedError") toast("カメラの使用が許可されていません。ブラウザの設定でカメラを許可してください");
@@ -978,7 +983,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     }
   }
   function stopScan() {
-    cancelAnimationFrame(scanRaf); scanRaf = 0;
+    clearTimeout(scanRaf); scanRaf = 0;
     if (scanStream) { scanStream.getTracks().forEach(t => t.stop()); scanStream = null; }
     const v = $("#scan-video"); v.srcObject = null;
     $("#scanner").hidden = true;
@@ -1002,6 +1007,12 @@ dialog{border:3px solid var(--pink);border-radius:18px}
       const code = window.jsQR(ctx.getImageData(0, 0, w, hgt).data, w, hgt, { inversionAttempts: "dontInvert" });
       if (code && code.data && Date.now() > scanBusyUntil) {
         const id = itemIdFromQr(code.data);
+        if (id && id === scanSkipId) {
+          const it = items.get(id);
+          if ($("#scan-msg").dataset.skip !== id) { scanMsg(`「${it ? fullName(it) : "この備品"}」は読み取り済みです。次の棚のQRコードを映してください`); $("#scan-msg").dataset.skip = id; }
+          scanRaf = setTimeout(scanTick, SCAN_INTERVAL);
+          return;
+        }
         if (id && items.has(id)) {
           stopScan();
           if (navigator.vibrate) navigator.vibrate(60);
@@ -1015,7 +1026,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
         setTimeout(() => { if (scanStream) scanMsg("棚のQRコードを枠の中に映してください"); }, 1500);
       }
     }
-    scanRaf = requestAnimationFrame(scanTick);
+    scanRaf = setTimeout(scanTick, SCAN_INTERVAL);
   }
   document.addEventListener("keydown", e => { if (e.key === "Escape" && scanStream) stopScan(); });
 
@@ -1450,7 +1461,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
     if (act.dataset.act === "logout") { auth && auth.signOut(); return; }
     if (act.dataset.act === "import") { act.disabled = true; importSeed(); return; }
     if (act.dataset.act === "copy") copyOrder();
-    if (act.dataset.act === "scan") { startScan(); return; }
+    if (act.dataset.act === "scan") { startScan(act.dataset.skip || null); return; }
     if (act.dataset.act === "scanclose") { stopScan(); return; }
     if (act.dataset.act === "qr") { view = "qr"; history.replaceState(null, "", "#qr"); render(); window.scrollTo(0, 0); return; }
     if (act.dataset.act === "print") { try { window.print(); } catch { toast("印刷画面を開けませんでした。「ファイルで保存」を使ってください"); } return; }
