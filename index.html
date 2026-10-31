@@ -1020,7 +1020,7 @@ dialog{border:3px solid var(--pink);border-radius:18px}
           <text x="35" y="62" font-size="15" font-weight="700" text-anchor="middle" fill="${ink}">7</text>
           <rect x="45" y="48" width="16" height="16" rx="3" fill="${sur2}" stroke="${line}"/><text x="53" y="61" font-size="13" font-weight="700" text-anchor="middle" fill="${ink}">＋</text>`)}`, "棚のQRコードをスマホで読み取り、在庫の数を入力するイラスト"),
       week: svg("0 0 260 150", (() => {
-        const days = [["土", "見回り", "発注する", "sat"], ["日", "休館", "", "off"], ["月", "手配", "", ""], ["火", "", "", ""], ["水", "", "", ""], ["木", "届く", "", "arrive"]];
+        const days = [["土", "見回り", "発注する", "sat"], ["日", "", "", ""], ["月", "手配", "", ""], ["火", "", "", ""], ["水", "", "", ""], ["木", "届く", "", "arrive"]];
         return `<rect x="8" y="8" width="244" height="134" rx="10" fill="${sur}" stroke="${ink}" stroke-width="2.5"/>` + days.map(([d, a, b, k], i) => {
           const cx = 30 + i * 40;
           const bg = k === "off" ? `<rect x="${cx - 17}" y="18" width="34" height="96" rx="5" fill="${sur2}"/>` : "";
